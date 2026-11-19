@@ -18,6 +18,7 @@ import Spinner from '../../components/common/Spinner';
 import EmptyState from '../../components/common/EmptyState';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import ProductModal from './ProductModal';
+import { getAssetUrl } from '../../utils/imageHelper';
 
 export default function ProductList() {
   const [products, setProducts] = useState([]);
@@ -186,15 +187,24 @@ export default function ProductList() {
                       <div className="flex items-center gap-3">
                         {p.image_url ? (
                           <img
-                            src={p.image_url}
+                            src={getAssetUrl(p.image_url)}
                             alt={p.name}
                             className="w-10 h-10 rounded-xl object-cover shrink-0 border border-slate-200 dark:border-white/10 shadow-sm"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              if (e.currentTarget.nextElementSibling) {
+                                e.currentTarget.nextElementSibling.classList.remove('hidden');
+                              }
+                            }}
                           />
-                        ) : (
-                          <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-400 flex items-center justify-center shrink-0 border border-slate-200 dark:border-white/10">
-                            <Package className="w-5 h-5 text-[#7F56D9]" />
-                          </div>
-                        )}
+                        ) : null}
+                        <div
+                          className={`w-10 h-10 rounded-xl bg-slate-100 dark:bg-white/10 text-slate-400 flex items-center justify-center shrink-0 border border-slate-200 dark:border-white/10 ${
+                            p.image_url ? 'hidden' : ''
+                          }`}
+                        >
+                          <Package className="w-5 h-5 text-[#7F56D9]" />
+                        </div>
                         <div>
                           <p className="font-bold text-slate-900 dark:text-white leading-tight">{p.name}</p>
                           {p.description && (

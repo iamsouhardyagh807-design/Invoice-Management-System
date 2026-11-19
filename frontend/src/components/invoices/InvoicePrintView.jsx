@@ -2,6 +2,7 @@ import React from 'react';
 import dayjs from 'dayjs';
 import { PenTool } from 'lucide-react';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { getAssetUrl } from '../../utils/imageHelper';
 
 export default function InvoicePrintView({
   invoice,
@@ -127,9 +128,12 @@ export default function InvoicePrintView({
             <div className="col-span-6 p-2.5 sm:p-3 border-r-2 border-black flex items-center gap-2.5">
               {item.image_url && (
                 <img
-                  src={item.image_url}
+                  src={getAssetUrl(item.image_url)}
                   alt={item.item_name}
                   className="w-7 h-7 rounded-md object-cover border border-slate-300 shrink-0"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
                 />
               )}
               <div>

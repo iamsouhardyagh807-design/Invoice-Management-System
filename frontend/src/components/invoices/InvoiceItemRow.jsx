@@ -1,6 +1,7 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatters';
+import { getAssetUrl } from '../../utils/imageHelper';
 
 export default function InvoiceItemRow({
   item,
@@ -71,9 +72,12 @@ export default function InvoiceItemRow({
         <div className="flex items-center gap-2">
           {item.image_url && (
             <img
-              src={item.image_url}
+              src={getAssetUrl(item.image_url)}
               alt="Item thumbnail"
               className="w-8 h-8 rounded-lg object-cover border border-slate-200 shrink-0"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+              }}
             />
           )}
           <input

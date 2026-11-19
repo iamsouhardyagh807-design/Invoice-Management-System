@@ -23,6 +23,7 @@ import EmptyState from '../../components/common/EmptyState';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import InvoiceStatusBadge from '../../components/invoices/InvoiceStatusBadge';
 import RecordPaymentModal from '../payments/RecordPaymentModal';
+import { getAssetUrl } from '../../utils/imageHelper';
 
 const STATUS_TABS = [
   { id: '', label: 'All Invoices' },
@@ -232,15 +233,24 @@ export default function InvoiceList() {
                       <div className="flex items-center gap-2.5">
                         {inv.customer_avatar_url ? (
                           <img
-                            src={inv.customer_avatar_url}
+                            src={getAssetUrl(inv.customer_avatar_url)}
                             alt={inv.customer_name}
                             className="w-7 h-7 rounded-full object-cover border border-slate-200 dark:border-white/10 shrink-0"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              if (e.currentTarget.nextElementSibling) {
+                                e.currentTarget.nextElementSibling.classList.remove('hidden');
+                              }
+                            }}
                           />
-                        ) : (
-                          <div className="w-7 h-7 rounded-full bg-[#7F56D9]/15 text-[#7F56D9] font-bold text-xs flex items-center justify-center shrink-0">
-                            {inv.customer_name?.charAt(0)?.toUpperCase()}
-                          </div>
-                        )}
+                        ) : null}
+                        <div
+                          className={`w-7 h-7 rounded-full bg-[#7F56D9]/15 text-[#7F56D9] font-bold text-xs flex items-center justify-center shrink-0 ${
+                            inv.customer_avatar_url ? 'hidden' : ''
+                          }`}
+                        >
+                          {inv.customer_name?.charAt(0)?.toUpperCase()}
+                        </div>
                         <div>
                           <p className="font-bold text-slate-900 dark:text-white leading-tight">{inv.customer_name}</p>
                           {inv.customer_company && (

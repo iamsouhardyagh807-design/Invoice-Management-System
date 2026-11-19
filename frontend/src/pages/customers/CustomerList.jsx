@@ -22,6 +22,7 @@ import Spinner from '../../components/common/Spinner';
 import EmptyState from '../../components/common/EmptyState';
 import ConfirmDialog from '../../components/common/ConfirmDialog';
 import CustomerModal from './CustomerModal';
+import { getAssetUrl } from '../../utils/imageHelper';
 
 export default function CustomerList() {
   const [customers, setCustomers] = useState([]);
@@ -180,15 +181,24 @@ export default function CustomerList() {
                       <div className="flex items-center gap-3">
                         {c.avatar_url ? (
                           <img
-                            src={c.avatar_url}
+                            src={getAssetUrl(c.avatar_url)}
                             alt={c.name}
                             className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200 dark:border-white/10 shadow-sm"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              if (e.currentTarget.nextElementSibling) {
+                                e.currentTarget.nextElementSibling.classList.remove('hidden');
+                              }
+                            }}
                           />
-                        ) : (
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-sm">
-                            {c.name.slice(0, 1).toUpperCase()}
-                          </div>
-                        )}
+                        ) : null}
+                        <div
+                          className={`w-9 h-9 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shrink-0 shadow-sm ${
+                            c.avatar_url ? 'hidden' : ''
+                          }`}
+                        >
+                          {c.name.slice(0, 1).toUpperCase()}
+                        </div>
                         <div>
                           <Link
                             to={`/customers/${c.id}`}

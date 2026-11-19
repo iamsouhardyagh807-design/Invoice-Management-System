@@ -21,6 +21,7 @@ import Button from '../../components/common/Button';
 import Spinner from '../../components/common/Spinner';
 import InvoiceStatusBadge from '../../components/invoices/InvoiceStatusBadge';
 import CustomerModal from './CustomerModal';
+import { getAssetUrl } from '../../utils/imageHelper';
 
 export default function CustomerDetails() {
   const { id } = useParams();
@@ -71,15 +72,24 @@ export default function CustomerDetails() {
           <div className="flex items-center gap-3.5">
             {customer.avatar_url ? (
               <img
-                src={customer.avatar_url}
+                src={getAssetUrl(customer.avatar_url)}
                 alt={customer.name}
                 className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-slate-700 shadow-md"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  if (e.currentTarget.nextElementSibling) {
+                    e.currentTarget.nextElementSibling.classList.remove('hidden');
+                  }
+                }}
               />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 text-white font-bold text-base flex items-center justify-center shadow-md">
-                {customer.name.slice(0, 1).toUpperCase()}
-              </div>
-            )}
+            ) : null}
+            <div
+              className={`w-12 h-12 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 text-white font-bold text-base flex items-center justify-center shadow-md ${
+                customer.avatar_url ? 'hidden' : ''
+              }`}
+            >
+              {customer.name.slice(0, 1).toUpperCase()}
+            </div>
             <div>
               <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 {customer.name}

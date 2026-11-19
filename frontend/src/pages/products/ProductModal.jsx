@@ -6,6 +6,7 @@ import Modal from '../../components/common/Modal';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
 import Select from '../../components/common/Select';
+import { compressImageFile, getAssetUrl } from '../../utils/imageHelper';
 
 export default function ProductModal({ isOpen, onClose, product = null, onSuccess }) {
   const isEditing = !!product;
@@ -54,18 +55,14 @@ export default function ProductModal({ isOpen, onClose, product = null, onSucces
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const data = new FormData();
-    data.append('image', file);
-
     setIsUploading(true);
     try {
-      const res = await productService.uploadImage(data);
-      if (res.success && res.imageUrl) {
-        setFormData((prev) => ({ ...prev, image_url: res.imageUrl }));
-        toast.success('Product image uploaded!');
-      }
+      // Compress directly to ultra-light base64 so it stores permanently in DB
+      const base64Data = await compressImageFile(file, 300, 0.82);
+      setFormData((prev) => ({ ...prev, image_url: base64Data }));
+      toast.success('Product image selected!');
     } catch (err) {
-      toast.error('Failed to upload image.');
+      toast.error('Failed to process image.');
     } finally {
       setIsUploading(false);
     }
@@ -110,13 +107,18 @@ export default function ProductModal({ isOpen, onClose, product = null, onSucces
           <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-slate-200 dark:bg-slate-700 shrink-0 border border-slate-300 dark:border-slate-600 shadow-sm flex items-center justify-center">
             {formData.image_url ? (
               <img
-                src={formData.image_url}
+                src={getAssetUrl(formData.image_url)}
                 alt={formData.name || 'Product'}
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  if (e.currentTarget.nextElementSibling) {
+                    e.currentTarget.nextElementSibling.classList.remove('hidden');
+                  }
+                }}
               />
-            ) : (
-              <Package className="w-8 h-8 text-slate-400" />
-            )}
+            ) : null}
+            <Package className={`w-8 h-8 text-slate-400 ${formData.image_url ? 'hidden' : ''}`} />
             {isUploading && (
               <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold">
                 ...

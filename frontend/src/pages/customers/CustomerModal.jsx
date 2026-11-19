@@ -5,6 +5,7 @@ import { customerService } from '../../services/customerService';
 import Modal from '../../components/common/Modal';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
+import { compressImageFile, getAssetUrl } from '../../utils/imageHelper';
 
 export default function CustomerModal({ isOpen, onClose, customer = null, onSuccess }) {
   const isEditing = !!customer;
@@ -65,18 +66,14 @@ export default function CustomerModal({ isOpen, onClose, customer = null, onSucc
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const data = new FormData();
-    data.append('avatar', file);
-
     setIsUploading(true);
     try {
-      const res = await customerService.uploadAvatar(data);
-      if (res.success && res.avatarUrl) {
-        setFormData((prev) => ({ ...prev, avatar_url: res.avatarUrl }));
-        toast.success('Customer picture uploaded!');
-      }
+      // Compress to lightweight base64 so it stores permanently in DB across Vercel & Render
+      const base64Data = await compressImageFile(file, 250, 0.82);
+      setFormData((prev) => ({ ...prev, avatar_url: base64Data }));
+      toast.success('Customer picture selected!');
     } catch (err) {
-      toast.error('Failed to upload picture.');
+      toast.error('Failed to process picture.');
     } finally {
       setIsUploading(false);
     }
@@ -121,13 +118,18 @@ export default function CustomerModal({ isOpen, onClose, customer = null, onSucc
           <div className="relative w-16 h-16 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 shrink-0 border-2 border-white dark:border-slate-600 shadow-sm flex items-center justify-center">
             {formData.avatar_url ? (
               <img
-                src={formData.avatar_url}
+                src={getAssetUrl(formData.avatar_url)}
                 alt={formData.name || 'Customer'}
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  if (e.currentTarget.nextElementSibling) {
+                    e.currentTarget.nextElementSibling.classList.remove('hidden');
+                  }
+                }}
               />
-            ) : (
-              <User className="w-8 h-8 text-slate-400" />
-            )}
+            ) : null}
+            <User className={`w-8 h-8 text-slate-400 ${formData.avatar_url ? 'hidden' : ''}`} />
             {isUploading && (
               <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white text-[10px] font-bold">
                 ...
