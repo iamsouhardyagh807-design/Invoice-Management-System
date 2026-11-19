@@ -258,6 +258,10 @@ async function initDb() {
         logo_url TEXT,
         signature_url TEXT,
         signature_type TEXT DEFAULT 'draw',
+        signature_text TEXT DEFAULT 'INFOTECH',
+        signature_title TEXT DEFAULT 'AUTHORIZED SIGNATORY',
+        signature_image_url TEXT,
+        signature_font TEXT DEFAULT 'marker',
         email TEXT,
         phone TEXT,
         address TEXT,
@@ -335,6 +339,10 @@ async function initDb() {
         terms TEXT,
         signature_data TEXT,
         signature_type TEXT DEFAULT 'draw',
+        signature_text TEXT,
+        signature_title TEXT,
+        signature_image_url TEXT,
+        signature_font TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -421,6 +429,12 @@ async function initDb() {
         user_id INTEGER NOT NULL UNIQUE,
         business_name TEXT NOT NULL,
         logo_url TEXT,
+        signature_url TEXT,
+        signature_type TEXT DEFAULT 'draw',
+        signature_text TEXT DEFAULT 'INFOTECH',
+        signature_title TEXT DEFAULT 'AUTHORIZED SIGNATORY',
+        signature_image_url TEXT,
+        signature_font TEXT DEFAULT 'marker',
         email TEXT,
         phone TEXT,
         address TEXT,
@@ -448,6 +462,7 @@ async function initDb() {
         company_name TEXT,
         email TEXT,
         phone TEXT,
+        avatar_url TEXT,
         billing_address TEXT,
         city TEXT,
         state TEXT,
@@ -465,6 +480,7 @@ async function initDb() {
         name TEXT NOT NULL,
         description TEXT,
         category TEXT DEFAULT 'General',
+        image_url TEXT,
         unit_price REAL DEFAULT 0.00,
         gst_rate REAL DEFAULT 18.00,
         product_type TEXT DEFAULT 'service',
@@ -494,6 +510,12 @@ async function initDb() {
         status TEXT DEFAULT 'pending',
         notes TEXT,
         terms TEXT,
+        signature_data TEXT,
+        signature_type TEXT DEFAULT 'draw',
+        signature_text TEXT,
+        signature_title TEXT,
+        signature_image_url TEXT,
+        signature_font TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -544,8 +566,44 @@ async function initDb() {
     `);
   }
 
+  // Run schema auto-migrations to ensure all columns exist
+  await runMigrations();
+
   // Seed demo data if users table is empty
   await seedInitialDataIfEmpty();
+}
+
+async function runMigrations() {
+  const migrations = [
+    { table: 'customers', column: 'avatar_url', type: 'TEXT' },
+    { table: 'products', column: 'image_url', type: 'TEXT' },
+    { table: 'business_settings', column: 'signature_text', type: "TEXT DEFAULT 'INFOTECH'" },
+    { table: 'business_settings', column: 'signature_title', type: "TEXT DEFAULT 'AUTHORIZED SIGNATORY'" },
+    { table: 'business_settings', column: 'signature_image_url', type: 'TEXT' },
+    { table: 'business_settings', column: 'signature_font', type: "TEXT DEFAULT 'marker'" },
+    { table: 'business_settings', column: 'signature_url', type: 'TEXT' },
+    { table: 'business_settings', column: 'signature_type', type: "TEXT DEFAULT 'draw'" },
+    { table: 'invoices', column: 'signature_text', type: 'TEXT' },
+    { table: 'invoices', column: 'signature_title', type: 'TEXT' },
+    { table: 'invoices', column: 'signature_image_url', type: 'TEXT' },
+    { table: 'invoices', column: 'signature_font', type: 'TEXT' },
+    { table: 'invoices', column: 'signature_data', type: 'TEXT' },
+    { table: 'invoices', column: 'signature_type', type: "TEXT DEFAULT 'draw'" }
+  ];
+
+  for (const m of migrations) {
+    try {
+      if (dbType === 'sqlite' && sqliteDb) {
+        sqliteDb.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.type};`);
+      } else if (dbType === 'postgres' && pgPool) {
+        await pgPool.query(`ALTER TABLE ${m.table} ADD COLUMN IF NOT EXISTS ${m.column} ${m.type};`);
+      } else if (dbType === 'mysql' && pool) {
+        await pool.query(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.type};`);
+      }
+    } catch (e) {
+      // Column already exists or table not ready, safely ignore
+    }
+  }
 }
 
 async function seedInitialDataIfEmpty() {
