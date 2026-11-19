@@ -1,0 +1,13 @@
+node_modules/
+.env
+dist/
+build/
+backend/uploads/*.png
+backend/uploads/*.jpg
+backend/uploads/*.jpeg
+backend/uploads/*.webp
+backend/uploads/*.svg
+backend/data/*.sqlite
+backend/data/*.sqlite-journal
+*.log
+.DS_Store
