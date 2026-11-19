@@ -7,6 +7,7 @@ require('dotenv').config();
 let dbType = 'mysql';
 let pool = null;
 let sqliteDb = null;
+let pgPool = null;
 
 // Helper to sanitize SQL for SQLite fallback
 function adaptSqlForSqlite(sql) {
@@ -45,6 +46,23 @@ function initSqlite() {
   sqliteDb.exec('PRAGMA foreign_keys = ON;');
   dbType = 'sqlite';
   console.log(`[Database] Using local SQLite database at: ${dbPath}`);
+}
+
+async function connectPostgres(dbUrl) {
+  try {
+    const { Pool } = require('pg');
+    pgPool = new Pool({
+      connectionString: dbUrl,
+      ssl: { rejectUnauthorized: false }
+    });
+    await pgPool.query('SELECT 1 as test');
+    dbType = 'postgres';
+    console.log('[Database] Connected successfully to PostgreSQL (Supabase/Cloud DB)');
+    return true;
+  } catch (err) {
+    console.warn(`[Database] PostgreSQL connection failed (${err.message}). Trying fallback.`);
+    return false;
+  }
 }
 
 async function connectMySQL() {
@@ -91,8 +109,37 @@ async function connectMySQL() {
   }
 }
 
+async function connectDatabase() {
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl && (dbUrl.startsWith('postgres://') || dbUrl.startsWith('postgresql://'))) {
+    const pgSuccess = await connectPostgres(dbUrl);
+    if (pgSuccess) return true;
+  }
+  return await connectMySQL();
+}
+
 // Universal query execution
 async function query(sql, params = []) {
+  if (dbType === 'postgres' && pgPool) {
+    let paramIndex = 1;
+    let pSql = sql.replace(/\?/g, () => `$${paramIndex++}`).replace(/`/g, '');
+    if (/^INSERT\s+INTO/i.test(pSql.trim()) && !/RETURNING/i.test(pSql)) {
+      pSql += ' RETURNING id';
+    }
+    const res = await pgPool.query(pSql, params);
+    const isSelect = /^SELECT/i.test(pSql.trim()) || /^SHOW/i.test(pSql.trim()) || /^WITH/i.test(pSql.trim());
+    if (isSelect) {
+      return [res.rows, []];
+    } else {
+      const insertId = res.rows && res.rows[0] ? (res.rows[0].id || 0) : 0;
+      return [{
+        insertId,
+        affectedRows: res.rowCount || 0,
+        changedRows: res.rowCount || 0
+      }, []];
+    }
+  }
+
   if (dbType === 'mysql' && pool) {
     return await pool.query(sql, params);
   }
@@ -135,6 +182,35 @@ async function query(sql, params = []) {
 
 // Transaction connection abstraction
 async function getConnection() {
+  if (dbType === 'postgres' && pgPool) {
+    const client = await pgPool.connect();
+    return {
+      query: async (sql, params = []) => {
+        let paramIndex = 1;
+        let pSql = sql.replace(/\?/g, () => `$${paramIndex++}`).replace(/`/g, '');
+        if (/^INSERT\s+INTO/i.test(pSql.trim()) && !/RETURNING/i.test(pSql)) {
+          pSql += ' RETURNING id';
+        }
+        const res = await client.query(pSql, params);
+        const isSelect = /^SELECT/i.test(pSql.trim()) || /^SHOW/i.test(pSql.trim()) || /^WITH/i.test(pSql.trim());
+        if (isSelect) {
+          return [res.rows, []];
+        } else {
+          const insertId = res.rows && res.rows[0] ? (res.rows[0].id || 0) : 0;
+          return [{
+            insertId,
+            affectedRows: res.rowCount || 0,
+            changedRows: res.rowCount || 0
+          }, []];
+        }
+      },
+      beginTransaction: async () => { await client.query('BEGIN'); },
+      commit: async () => { await client.query('COMMIT'); },
+      rollback: async () => { await client.query('ROLLBACK'); },
+      release: () => client.release()
+    };
+  }
+
   if (dbType === 'mysql' && pool) {
     const conn = await pool.getConnection();
     return {
@@ -159,9 +235,155 @@ async function getConnection() {
 
 // Auto-initialize tables and seed demo data
 async function initDb() {
-  await connectMySQL();
+  await connectDatabase();
 
-  if (dbType === 'mysql') {
+  if (dbType === 'postgres') {
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        business_name TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
+        phone TEXT,
+        password TEXT NOT NULL,
+        role TEXT DEFAULT 'admin',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS business_settings (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL UNIQUE,
+        business_name TEXT NOT NULL,
+        logo_url TEXT,
+        signature_url TEXT,
+        signature_type TEXT DEFAULT 'draw',
+        email TEXT,
+        phone TEXT,
+        address TEXT,
+        city TEXT,
+        state TEXT,
+        postal_code TEXT,
+        country TEXT DEFAULT 'India',
+        gstin TEXT,
+        currency TEXT DEFAULT 'INR',
+        currency_symbol TEXT DEFAULT '₹',
+        invoice_prefix TEXT DEFAULT 'INV-',
+        next_invoice_number INTEGER DEFAULT 1001,
+        default_tax_rate NUMERIC DEFAULT 18.00,
+        default_payment_terms TEXT DEFAULT 'Payment due within 15 days of invoice date',
+        invoice_footer TEXT DEFAULT 'Thank you for your business! For any questions, please contact our support.',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS customers (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        company_name TEXT,
+        email TEXT,
+        phone TEXT,
+        avatar_url TEXT,
+        billing_address TEXT,
+        city TEXT,
+        state TEXT,
+        postal_code TEXT,
+        gstin TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS products (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        category TEXT DEFAULT 'General',
+        image_url TEXT,
+        unit_price NUMERIC DEFAULT 0.00,
+        gst_rate NUMERIC DEFAULT 18.00,
+        product_type TEXT DEFAULT 'service',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS invoices (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        customer_id INTEGER NOT NULL,
+        invoice_number TEXT NOT NULL,
+        invoice_date TEXT NOT NULL,
+        due_date TEXT NOT NULL,
+        payment_terms TEXT DEFAULT 'Due within 15 days',
+        tax_type TEXT DEFAULT 'cgst_sgst',
+        subtotal NUMERIC DEFAULT 0.00,
+        discount_total NUMERIC DEFAULT 0.00,
+        tax_total NUMERIC DEFAULT 0.00,
+        cgst_amount NUMERIC DEFAULT 0.00,
+        sgst_amount NUMERIC DEFAULT 0.00,
+        igst_amount NUMERIC DEFAULT 0.00,
+        grand_total NUMERIC DEFAULT 0.00,
+        paid_amount NUMERIC DEFAULT 0.00,
+        due_amount NUMERIC DEFAULT 0.00,
+        status TEXT DEFAULT 'draft',
+        notes TEXT,
+        terms TEXT,
+        signature_data TEXT,
+        signature_type TEXT DEFAULT 'draw',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE RESTRICT
+      );
+
+      CREATE TABLE IF NOT EXISTS invoice_items (
+        id SERIAL PRIMARY KEY,
+        invoice_id INTEGER NOT NULL,
+        product_id INTEGER,
+        item_name TEXT NOT NULL,
+        description TEXT,
+        quantity NUMERIC NOT NULL DEFAULT 1.00,
+        unit_price NUMERIC NOT NULL DEFAULT 0.00,
+        discount_percent NUMERIC DEFAULT 0.00,
+        tax_percent NUMERIC DEFAULT 18.00,
+        line_total NUMERIC NOT NULL DEFAULT 0.00,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS payments (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        invoice_id INTEGER NOT NULL,
+        customer_id INTEGER NOT NULL,
+        payment_date TEXT NOT NULL,
+        amount NUMERIC NOT NULL,
+        payment_method TEXT DEFAULT 'UPI',
+        transaction_reference TEXT,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+        FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE RESTRICT
+      );
+
+      CREATE TABLE IF NOT EXISTS password_resets (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        token TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        used INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+    `);
+  } else if (dbType === 'mysql') {
     // Run schema creation for MySQL
     const schemaPath = path.join(__dirname, '..', '..', 'database', 'schema.sql');
     if (fs.existsSync(schemaPath)) {
